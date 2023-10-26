@@ -5,6 +5,7 @@ import { use, useEffect, useRef, useState } from "react";
 import styles from "./Navbar.module.css";
 import { useEpisode } from "@/contexts/EpisodeProvider";
 import { getEpisodesByPage } from "@/api/rickAndMortyAPI";
+import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 
 type NavbarProps = {
   episodePromise: Promise<RickAndMortyAPIData<Episode[]>>;
@@ -13,13 +14,11 @@ type NavbarProps = {
 export default function Navbar({ episodePromise }: NavbarProps) {
   // resolve the promise from the server side
   const initialEpisodes = use(episodePromise);
-  const [episodes, setEpisodes] = useState<Episode[]>(initialEpisodes.results ? initialEpisodes.results : []);
+  const [episodes, setEpisodes] = useState<Episode[]>(
+    initialEpisodes.results ? initialEpisodes.results : []
+  );
   const { selectedEpisode, setSelectedEpisode } = useEpisode();
 
-  const observerTarget = useRef(null);
-  const observerRoot = useRef(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [reachedEnd, setReachedEnd] = useState(false);
 
@@ -32,47 +31,20 @@ export default function Navbar({ episodePromise }: NavbarProps) {
   };
 
   const fetchEpisodes = async () => {
-    setIsLoading(true);
-    setErrorMessage(null);
-
-    try {
-      const data = await getEpisodesByPage(page + 1);
-      setEpisodes(prev => [...prev, ...(data.results ? data.results : [])]);
-      setPage(prev => prev + 1);
-      if (data.info?.next === null) {
-        setReachedEnd(true);
-      }
-    } catch (error) {
-      if (error instanceof Error) {
-        setErrorMessage(error.message);
-      } else {
-        setErrorMessage(String(error));
-      }
-    } finally {
-      setIsLoading(false);
+    const data = await getEpisodesByPage(page + 1);
+    setEpisodes(prev => [...prev, ...(data.results ? data.results : [])]);
+    setPage(prev => prev + 1);
+    if (data.info?.next === null) {
+      setReachedEnd(true);
     }
   };
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      entries => {
-        if (entries[0].isIntersecting && !reachedEnd) {
-          fetchEpisodes();
-        }
-      },
-      { root: observerRoot?.current, rootMargin: "300px", threshold: 0 }
-    );
-
-    if (observerTarget.current) {
-      observer.observe(observerTarget.current);
-    }
-
-    return () => {
-      if (observerTarget.current) {
-        observer.unobserve(observerTarget.current);
-      }
-    };
-  }, [observerRoot, observerTarget, reachedEnd, page]);
+  const { observerTarget, observerRoot, isLoading, errorMessage } =
+    useInfiniteScroll({
+      page,
+      reachedEnd,
+      fetchFunction: fetchEpisodes,
+    });
 
   return (
     <nav className={styles.navbar}>
@@ -83,7 +55,9 @@ export default function Navbar({ episodePromise }: NavbarProps) {
           <li
             key={episode.id}
             onClick={() => handleClick(episode)}
-            className={`${styles.item} ${selectedEpisode === episode ? styles.selected : ""}`}
+            className={`${styles.item} ${
+              selectedEpisode === episode ? styles.selected : ""
+            }`}
           >
             {episode.name}
           </li>
